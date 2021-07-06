@@ -9,7 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func (c Config) Check(checkConfig CheckConfig) error {
+func (c *Config) Check(checkConfig CheckConfig) error {
 	if matched, _ := regexp.MatchString(checkConfig.Not, c.Remarks); matched {
 		err := fmt.Errorf("remarks %s not allowed, ignore", c.Remarks)
 		log.Warn(err)
@@ -27,5 +27,7 @@ func (c Config) Check(checkConfig CheckConfig) error {
 	}
 
 	log.Infof("check %s:%d is passed", c.Server, c.ServerPort)
+	c.CheckTime = time.Now()
+
 	return nil
 }

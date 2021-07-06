@@ -1,8 +1,9 @@
 package node
 
+import "time"
+
 // Config set for ssr config
 type Config struct {
-	ID            string `json:"_"`
 	Server        string `json:"server"`
 	ServerPort    int    `json:"server_port"`
 	Method        string `json:"method"`
@@ -13,6 +14,9 @@ type Config struct {
 	Password      string `json:"password"`
 	Remarks       string `json:"remarks"`
 	Group         string `json:"group"`
+
+	ID        string    `json:"id"`
+	CheckTime time.Time `json:"check_time"`
 }
 
 type CheckConfig struct {

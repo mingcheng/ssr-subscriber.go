@@ -17,6 +17,7 @@ steps:
     image: golang:1.16
     environment:
       GOPROXY: https://goproxy.cn,direct
+      REDIS_SERVER: redis:6379
     commands:
       - make test
 
@@ -42,3 +43,7 @@ steps:
       tags:
         - latest
         - 3.0.0
+
+services:
+  - name: redis
+    image: redis

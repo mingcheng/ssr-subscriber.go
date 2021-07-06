@@ -35,9 +35,14 @@ type program struct {
 }
 
 func (p *program) Init(_ svc.Environment) error {
-	p.RedisClient = redis.NewClient(&redis.Options{
-		Addr: p.Config.RedisAddr,
-	})
+
+	if p.Config.RedisAddr != "" {
+		p.RedisClient = redis.NewClient(&redis.Options{
+			Addr: p.Config.RedisAddr,
+		})
+	} else {
+		log.Warn("redis address is not configured")
+	}
 
 	// start fetch and check
 	p.Fetcher = &subscriber.Fetcher{
@@ -114,8 +119,10 @@ func (p *program) Stop() error {
 		return err
 	}
 
-	if err := p.RedisClient.Close(); err != nil {
-		return err
+	if p.RedisClient != nil {
+		if err := p.RedisClient.Close(); err != nil {
+			return err
+		}
 	}
 
 	return nil

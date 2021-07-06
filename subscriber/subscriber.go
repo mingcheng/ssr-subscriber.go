@@ -21,7 +21,7 @@ type Subscriber struct {
 // Start to restore configs then fetch and update save
 func (s *Subscriber) Start() error {
 	if err := s.Fetcher.Restore(context.Background()); err != nil {
-		return err
+		log.Warn("restore config is failed, maybe redis is not configured")
 	}
 
 	if s.Interval > 0 {
@@ -62,15 +62,20 @@ func (s *Subscriber) Stop(ctx context.Context) error {
 func (s *Subscriber) Fetch() error {
 	var err error
 	for _, uri := range s.Sources {
+		log.Infof("fetch from %s", uri)
+
 		if path.IsAbs(uri) {
 			err = s.Fetcher.FromFile(uri)
 		} else {
 			err = s.Fetcher.FromURL(uri)
 		}
+
+		log.Infof("last fetch timestamp is %v", s.FetchTimestamp)
 		s.FetchTimestamp = time.Now()
 	}
 
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 

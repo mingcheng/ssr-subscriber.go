@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -20,6 +19,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/proxy"
 )
+
+const cacheKey = "ssr:subscriber"
 
 type Fetcher struct {
 	Configs     map[string]node.Config
@@ -32,10 +33,12 @@ type Fetcher struct {
 func (f *Fetcher) Init() error {
 	f.Configs = make(map[string]node.Config)
 
-	status := f.RedisClient.Ping(context.Background())
-	_, err := status.Result()
-	if err != nil {
-		return err
+	if f.RedisClient != nil {
+		status := f.RedisClient.Ping(context.Background())
+		_, err := status.Result()
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -130,35 +133,36 @@ func (f *Fetcher) FromBytes(data []byte) error {
 }
 
 func (f *Fetcher) Check() error {
-	timeout, err := time.ParseDuration(f.CheckConfig.TCPTimeout)
-	if err != nil {
-		return err
-	}
-
 	for k, config := range f.Configs {
-		_, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", config.Server, config.ServerPort), timeout)
-		if err != nil {
-			log.Infof("dail tcp %s:%d is timeout, so delete", config.Server, config.ServerPort)
+		if err := config.Check(f.CheckConfig); err != nil {
+			log.Warnf("clean config which is not healthy, %s:%d(%s)", config.Server, config.ServerPort, config.Remarks)
 			delete(f.Configs, k)
-		}
 
-		if matched, _ := regexp.MatchString(f.CheckConfig.Not, config.Remarks); matched {
-			log.Infof("%s is not allowed, so delete", config.Remarks)
-			delete(f.Configs, k)
+			if f.RedisClient != nil {
+				log.Warnf("delete config with the key %s from redis", k)
+				f.RedisClient.HDel(context.Background(), cacheKey, k)
+			}
+		} else {
+			f.Configs[k] = config // update check timestamp
 		}
 	}
 
 	return nil
 }
 
+// Save configs to redis
 func (f *Fetcher) Save(ctx context.Context) error {
+	if f.RedisClient == nil {
+		return fmt.Errorf("redis client is not initized, so can not save")
+	}
+
 	for k, config := range f.Configs {
 		marshal, err := json.Marshal(config)
 		if err != nil {
 			return err
 		}
 
-		err = f.RedisClient.HSet(ctx, "ssr:subscriber", k, marshal).Err()
+		err = f.RedisClient.HSet(ctx, cacheKey, k, marshal).Err()
 		if err != nil {
 			return err
 		}
@@ -167,8 +171,13 @@ func (f *Fetcher) Save(ctx context.Context) error {
 	return nil
 }
 
+// Restore cached configs from redis
 func (f *Fetcher) Restore(ctx context.Context) error {
-	cmd := f.RedisClient.HKeys(ctx, "ssr:subscriber")
+	if f.RedisClient == nil {
+		return fmt.Errorf("redis client is not initized")
+	}
+
+	cmd := f.RedisClient.HKeys(ctx, cacheKey)
 
 	if cmd.Err() != nil {
 		return cmd.Err()
@@ -180,7 +189,7 @@ func (f *Fetcher) Restore(ctx context.Context) error {
 	}
 
 	for _, key := range keys {
-		status := f.RedisClient.HGet(ctx, "ssr:subscriber", key)
+		status := f.RedisClient.HGet(ctx, cacheKey, key)
 		if data, err := status.Result(); err != nil {
 			log.Error(err)
 		} else {
